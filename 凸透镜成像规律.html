@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>3D 透视光学实验室</title>
+    <style>
+        body { margin: 0; background: #050505; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; overflow: hidden;}
+        canvas { background: radial-gradient(circle at center, #111, #000); border-bottom: 3px solid #3498db; cursor: ew-resize; }
+        .ui { position: absolute; bottom: 30px; width: 800px; display: flex; justify-content: space-around; background: rgba(20,20,20,0.9); padding: 20px; border-radius: 12px; border: 1px solid #333; }
+        .stat { text-align: center; }
+        .val { display: block; font-size: 24px; font-weight: bold; color: #3498db; font-family: monospace; }
+        .tag { background: #222; padding: 5px 15px; border-radius: 4px; margin-top: 5px; display: inline-block; transition: 0.3s; color: #666;}
+        .active { background: #3498db; color: white; box-shadow: 0 0 15px rgba(52,152,219,0.5); }
+    </style>
+</head>
+<body>
+
+    <h2 style="margin-top: 20px; color: #3498db;">凸透镜成像规律</h2>
+    <canvas id="optCanvas" width="1000" height="500"></canvas>
+
+    <div class="ui">
+        <div class="stat">物距 (u)<span id="uiU" class="val">0</span></div>
+        <div class="stat">像距 (v)<span id="uiV" class="val">0</span></div>
+        <div id="uiTag" class="tag">加载中...</div>
+    </div>
+
+<script>
+const canvas = document.getElementById('optCanvas');
+const ctx = canvas.getContext('2d');
+
+let f = 100, u = 250, tick = 0;
+let isDragging = false;
+
+// 交互逻辑
+canvas.onmousedown = () => isDragging = true;
+window.onmouseup = () => isDragging = false;
+window.onmousemove = (e) => {
+    if (isDragging) {
+        let rect = canvas.getBoundingClientRect();
+        let x = e.clientX - rect.left;
+        if (x < canvas.width/2 - 10) u = canvas.width/2 - x;
+    }
+};
+
+function draw3DScene() {
+    tick++;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+
+    // 1. 绘制 3D 导轨地面 (透视线)
+    ctx.strokeStyle = '#1a1a1a';
+    for(let i=0; i<20; i++) {
+        ctx.beginPath();
+        ctx.moveTo(cx - 500 + i*50, canvas.height);
+        ctx.lineTo(cx, cy); // 消失点
+        ctx.stroke();
+    }
+
+    // 2. 绘制光学主轴 (3D 感)
+    let grd = ctx.createLinearGradient(0, cy, canvas.width, cy);
+    grd.addColorStop(0, '#000'); grd.addColorStop(0.5, '#333'); grd.addColorStop(1, '#000');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, cy - 2, canvas.width, 4);
+
+    // 3. 关键点 (F, 2F)
+    const pts = [-2*f, -f, f, 2*f];
+    pts.forEach(p => {
+        ctx.fillStyle = '#444';
+        ctx.beginPath(); ctx.arc(cx + p, cy, 4, 0, 7); ctx.fill();
+        ctx.fillText(p < 0 ? (Math.abs(p)==f?'F':'2F') : (p==f?'F':'2F'), cx + p - 10, cy + 20);
+    });
+
+    // 4. 物理计算
+    let v = (f * u) / (u - f);
+    let mag = -v / u;
+
+    // 5. 画凸透镜 (3D 玻璃质感)
+    ctx.save();
+    ctx.shadowBlur = 20; ctx.shadowColor = '#3498db';
+    let lensGrd = ctx.createRadialGradient(cx-5, cy-30, 0, cx, cy, 150);
+    lensGrd.addColorStop(0, '#add8e6'); lensGrd.addColorStop(1, '#2980b9');
+    ctx.fillStyle = lensGrd;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 15, 120, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    // 6. 画光线 (带有透视衰减)
+    if (Math.abs(u-f) > 1) {
+        ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+        ctx.beginPath(); ctx.moveTo(cx-u, cy-70); ctx.lineTo(cx, cy-70);
+        ctx.lineTo(u>f ? cx+v : canvas.width, u>f ? cy-70*mag : cy-1000); ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // 7. 画 3D 蜡烛 (物)
+    drawCandle(cx - u, cy, 70, false);
+
+    // 8. 画 3D 蜡烛 (像)
+    if (u > f) {
+        drawCandle(cx + v, cy, 70 * mag, true);
+    } else if (u < f) {
+        ctx.globalAlpha = 0.4;
+        drawCandle(cx + v, cy, 70 * mag, true);
+        ctx.globalAlpha = 1;
+    }
+
+    updateUI(u, v);
+    requestAnimationFrame(draw3DScene);
+}
+
+function drawCandle(x, y, h, isImage) {
+    const absH = Math.abs(h);
+    const direction = h > 0 ? -1 : 1;
+    const s = absH / 70; // 缩放
+
+    ctx.save();
+    ctx.translate(x, y);
+    if (h < 0) ctx.scale(1, -1);
+
+    // 烛身 (圆柱体效果)
+    let bodyGrd = ctx.createLinearGradient(-10*s, 0, 10*s, 0);
+    bodyGrd.addColorStop(0, isImage ? '#1e5d34' : '#c0392b');
+    bodyGrd.addColorStop(0.5, isImage ? '#2ecc71' : '#ff4d4d');
+    bodyGrd.addColorStop(1, isImage ? '#1e5d34' : '#c0392b');
+    ctx.fillStyle = bodyGrd;
+    ctx.fillRect(-10*s, 0, 20*s, -absH * 0.8);
+    
+    // 顶部圆面 (增加立体感)
+    ctx.fillStyle = isImage ? '#27ae60' : '#e74c3c';
+    ctx.beginPath(); ctx.ellipse(0, -absH * 0.8, 10*s, 4*s, 0, 0, Math.PI*2); ctx.fill();
+
+    // 动态火焰
+    const flicker = Math.sin(tick * 0.2) * 2 * s;
+    ctx.shadowBlur = 15; ctx.shadowColor = '#f1c40f';
+    ctx.fillStyle = '#f1c40f';
+    ctx.beginPath();
+    ctx.moveTo(flicker, -absH);
+    ctx.bezierCurveTo(8*s, -absH*0.8, -8*s, -absH*0.8, flicker, -absH);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function updateUI(u, v) {
+    document.getElementById('uiU').innerText = Math.round(u);
+    document.getElementById('uiV').innerText = Math.abs(u-f)<1 ? "∞" : Math.round(Math.abs(v));
+    const tag = document.getElementById('uiTag');
+    if (u > 2*f) { tag.innerText = "倒立、缩小的实像"; tag.className = "tag active"; }
+    else if (u > f) { tag.innerText = "倒立、放大的实像"; tag.className = "tag active"; }
+    else if (u < f) { tag.innerText = "正立、放大的虚像"; tag.className = "tag active"; }
+    else { tag.innerText = "不成像"; tag.className = "tag"; }
+}
+
+draw3DScene();
+</script>
+</body>
+</html>
