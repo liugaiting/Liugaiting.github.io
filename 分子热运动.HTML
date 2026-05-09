@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>分子热运动 - 能量守恒恒速版</title>
+    <style>
+        :root { --accent: #00f2ff; --bg: #050508; --panel: #1a1a2e; }
+        body { margin: 0; background: var(--bg); color: #fff; font-family: "Segoe UI", sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        h1 { margin: 25px 0 10px; font-weight: 200; letter-spacing: 4px; color: var(--accent); font-size: 1.5rem; }
+        .main-container { display: flex; gap: 25px; padding: 20px; align-items: flex-start; }
+        #sim-wrapper { position: relative; border-radius: 8px; overflow: hidden; border: 1px solid #333; background: #000; transition: width 0.4s ease; }
+        canvas { display: block; }
+        .controls { width: 300px; background: var(--panel); padding: 25px; border-radius: 12px; border: 1px solid #333; }
+        .control-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 10px; font-size: 0.8em; color: #889; }
+        input[type="range"] { -webkit-appearance: none; width: 100%; height: 2px; background: #444; outline: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: var(--accent); border-radius: 50%; cursor: pointer; }
+        button { width: 100%; padding: 10px; background: transparent; color: #fff; border: 1px solid #444; border-radius: 4px; cursor: pointer; transition: 0.2s; margin-top: 8px; font-size: 0.85em; }
+        button:hover { border-color: var(--accent); background: rgba(0,242,255,0.05); }
+        .stats { display: flex; justify-content: space-between; margin-top: 20px; font-family: monospace; font-size: 0.85em; color: #667; }
+        .stat-val { color: var(--accent); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>分子热运动模拟系统</h1>
+
+    <div class="main-container">
+        <div id="sim-wrapper">
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>🌡️ 温度控制: <span id="tempTag" style="color:var(--accent)">3.0</span></label>
+                <input type="range" id="tempRange" min="0.5" max="20" step="0.5" value="3">
+            </div>
+            <div class="control-group">
+                <label>📦 容器体积</label>
+                <button id="toggleSize">压缩 / 扩大 容器</button>
+            </div>
+            <div class="control-group">
+                <label>🧪 现象演示</label>
+                <button id="diffusionBtn">启动扩散实验</button>
+                <button id="resetBtn">重置系统</button>
+            </div>
+            <div class="stats">
+                <span>分子总数: <span id="countStat" class="stat-val">60</span></span>
+                <span>实时压强: <span id="colStat" class="stat-val">0</span></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const wrapper = document.getElementById('sim-wrapper');
+        const tempRange = document.getElementById('tempRange');
+        
+        let w = 600, h = 400;
+        let particles = [];
+        let collisionCount = 0;
+        const radius = 4;
+
+        canvas.width = w; canvas.height = h;
+        wrapper.style.width = w + 'px';
+
+        class Particle {
+            constructor(x, y, hue = 190) {
+                this.x = x; this.y = y;
+                const angle = Math.random() * Math.PI * 2;
+                // 核心：设置每个分子的基准速率
+                this.speed = 1.0; 
+                this.vx = Math.cos(angle) * this.speed;
+                this.vy = Math.sin(angle) * this.speed;
+                this.hue = hue;
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, radius, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, 1)`;
+                ctx.fill();
+            }
+            update(T) {
+                // 边界检测
+                if (this.x + radius > w) { this.vx = -Math.abs(this.vx); this.x = w - radius; collisionCount++; }
+                if (this.x - radius < 0) { this.vx = Math.abs(this.vx); this.x = radius; collisionCount++; }
+                if (this.y + radius > h) { this.vy = -Math.abs(this.vy); this.y = h - radius; collisionCount++; }
+                if (this.y - radius < 0) { this.vy = Math.abs(this.vy); this.y = radius; collisionCount++; }
+                
+                // 速率恒定校验：确保每次移动前方向矢量的模长为 1，再乘以温度 T
+                const currentMag = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                this.vx /= currentMag;
+                this.vy /= currentMag;
+
+                this.x += this.vx * T;
+                this.y += this.vy * T;
+                this.draw();
+            }
+        }
+
+        function handlePhysics() {
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    const p1 = particles[i], p2 = particles[j];
+                    const dx = p2.x - p1.x, dy = p2.y - p1.y;
+                    const d = Math.sqrt(dx*dx + dy*dy);
+                    
+                    if (d < radius * 2) {
+                        collisionCount++;
+                        // 弹性碰撞计算
+                        const angle = Math.atan2(dy, dx);
+                        const s = Math.sin(angle), c = Math.cos(angle);
+                        const v1 = p1.vx * c + p1.vy * s;
+                        const v2 = p2.vx * c + p2.vy * s;
+                        
+                        // 交换轴向速度成分
+                        p1.vx = v2 * c - (p1.vy * c - p1.vx * s) * s;
+                        p1.vy = v2 * s + (p1.vy * c - p1.vx * s) * c;
+                        p2.vx = v1 * c - (p2.vy * c - p2.vx * s) * s;
+                        p2.vy = v1 * s + (p2.vy * c - p2.vx * s) * c;
+
+                        // 强制修正：防止碰撞后的数值飘逸导致动能损失
+                        const mag1 = Math.sqrt(p1.vx * p1.vx + p1.vy * p1.vy);
+                        const mag2 = Math.sqrt(p2.vx * p2.vx + p2.vy * p2.vy);
+                        p1.vx /= mag1; p1.vy /= mag1;
+                        p2.vx /= mag2; p2.vy /= mag2;
+
+                        // 强制分开重叠的粒子，彻底解决“粘连”导致的减速
+                        const overlap = radius * 2 - d + 0.1;
+                        p1.x -= (overlap/2) * c; p1.y -= (overlap/2) * s;
+                        p2.x += (overlap/2) * c; p2.y += (overlap/2) * s;
+                    }
+                }
+            }
+        }
+
+        function init(mode) {
+            particles = [];
+            for(let i=0; i<60; i++) {
+                if (mode === 'diffuse') {
+                    if(i < 30) particles.push(new Particle(Math.random()*50+20, Math.random()*(h-20)+10, 0));
+                    else particles.push(new Particle(w-Math.random()*50-20, Math.random()*(h-20)+10, 190));
+                } else {
+                    particles.push(new Particle(Math.random()*(w-20)+10, Math.random()*(h-20)+10, 190));
+                }
+            }
+            document.getElementById('countStat').innerText = particles.length;
+        }
+
+        function render() {
+            const T = parseFloat(tempRange.value);
+            ctx.fillStyle = 'rgba(5, 5, 8, 0.4)';
+            ctx.fillRect(0, 0, w, h);
+            handlePhysics();
+            particles.forEach(p => p.update(T));
+            requestAnimationFrame(render);
+        }
+
+        document.getElementById('toggleSize').onclick = () => {
+            const oldW = w;
+            w = (w === 600) ? 300 : 600;
+            const ratio = w / oldW;
+            particles.forEach(p => { p.x *= ratio; });
+            wrapper.style.width = w + 'px';
+            canvas.width = w;
+        };
+
+        tempRange.oninput = () => { document.getElementById('tempTag').innerText = tempRange.value; };
+        document.getElementById('diffusionBtn').onclick = () => init('diffuse');
+        document.getElementById('resetBtn').onclick = () => init();
+
+        setInterval(() => {
+            document.getElementById('colStat').innerText = collisionCount;
+            collisionCount = 0;
+        }, 1000);
+
+        init();
+        render();
+    </script>
+</body>
+</html>
