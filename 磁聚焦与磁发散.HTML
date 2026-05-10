@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>磁聚焦 - 特定角度版 (30°, 60°, 90°, 120°, 150°)</title>
+    <style>
+        body { margin: 0; background: #000; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; font-family: 'Consolas', monospace; }
+        canvas { background: #020202; box-shadow: 0 0 50px rgba(0, 242, 255, 0.2); border: 1px solid #1a1a1a; }
+        .ui-overlay { position: absolute; top: 20px; text-align: center; pointer-events: none; width: 100%; }
+        h1 { font-size: 1.2rem; color: #00f2ff; letter-spacing: 3px; margin: 0; text-transform: uppercase; }
+        .info { font-size: 11px; color: #008a91; margin-top: 8px; }
+    </style>
+</head>
+<body>
+    <div class="ui-overlay">
+        <h1>Magnetic Lens: Fixed Angles</h1>
+        <div class="info">角度: 30°, 60°, 90°, 120°, 150° | 磁场: ⊙ | 2026 物理模拟</div>
+    </div>
+    <canvas id="physicsCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('physicsCanvas');
+const ctx = canvas.getContext('2d');
+
+canvas.width = 1100;
+canvas.height = 750;
+
+const R = 150; 
+const centerX1 = 300, centerX2 = 800; 
+const focalY = canvas.height / 2;    
+
+const centerY_Top = focalY - R;      
+const centerY_Bottom = focalY + R;   
+
+// --- 已按要求修改 ---
+const angles = [30, 60, 90, 120, 150]; // 固定角度数组
+const numParticles = angles.length;
+const lineWidth = 3;    
+const speed = 3.2;       
+// --------------------
+
+const fields = [
+    { x: centerX1, y: centerY_Top },
+    { x: centerX2, y: centerY_Top },
+    { x: centerX2, y: centerY_Bottom },
+    { x: centerX1, y: centerY_Bottom }
+];
+
+class Particle {
+    constructor(id) {
+        this.id = id;
+        this.angleDeg = angles[id]; // 获取对应角度
+        const hue = (id * 360 / numParticles); 
+        this.color = `hsla(${hue}, 90%, 60%, 0.9)`;
+        this.reset();
+    }
+
+    reset() {
+        this.x = centerX1;
+        this.y = focalY;
+        
+        // 使用指定的度数转换为弧度
+        const angleRad = (this.angleDeg * Math.PI) / 180;
+        
+        this.vx = Math.cos(angleRad) * speed;
+        this.vy = -Math.sin(angleRad) * speed; 
+        this.path = [];
+        this.frameCounter = 0;
+    }
+
+    update() {
+        for (let f of fields) {
+            const dx = this.x - f.x;
+            const dy = this.y - f.y;
+            if (dx*dx + dy*dy <= R*R) {
+                const omega = speed / R;
+                const vx_old = this.vx;
+                const vy_old = this.vy;
+                this.vx = vx_old * Math.cos(omega) - vy_old * Math.sin(omega);
+                this.vy = vx_old * Math.sin(omega) + vy_old * Math.cos(omega);
+                break;
+            }
+        }
+        this.x += this.vx;
+        this.y += this.vy;
+        this.frameCounter++;
+        this.path.push({x: this.x, y: this.y});
+        if (this.path.length > 600) this.path.shift();
+        
+        if (this.x < -50 || this.x > canvas.width + 50 || this.y < -50 || this.y > canvas.height + 50) {
+            this.reset();
+        }
+        if (this.frameCounter > 200) {
+            const d = Math.sqrt((this.x - centerX1)**2 + (this.y - focalY)**2);
+            if (d < 4) this.reset();
+        }
+    }
+
+    draw() {
+        if (this.path.length < 2) return;
+        ctx.beginPath();
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = lineWidth;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        ctx.moveTo(this.path[0].x, this.path[0].y);
+        for(let i=1; i<this.path.length; i++) {
+            ctx.lineTo(this.path[i].x, this.path[i].y);
+        }
+        ctx.stroke();
+
+        const head = this.path[this.path.length - 1];
+        ctx.beginPath();
+        ctx.arc(head.x, head.y, 4, 0, Math.PI*2);
+        ctx.fillStyle = "#fff";
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = this.color;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+}
+
+const particles = Array.from({ length: numParticles }, (_, i) => new Particle(i));
+
+function drawScenery() {
+    fields.forEach(f => {
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, R, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(0, 242, 255, 0.15)";
+        ctx.stroke();
+        ctx.fillStyle = "rgba(0, 242, 255, 0.4)";
+        ctx.font = "14px Arial";
+        ctx.fillText("⊙", f.x - 7, f.y + 6);
+    });
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+    ctx.beginPath();
+    ctx.moveTo(0, focalY);
+    ctx.lineTo(canvas.width, focalY);
+    ctx.stroke();
+    ctx.fillStyle = "#ff2d55";
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = "#ff2d55";
+    ctx.beginPath();
+    ctx.arc(centerX1, focalY, 5, 0, Math.PI*2);
+    ctx.arc(centerX2, focalY, 5, 0, Math.PI*2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+}
+
+function loop() {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawScenery();
+    particles.forEach(p => {
+        p.update();
+        p.draw();
+    });
+    requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
