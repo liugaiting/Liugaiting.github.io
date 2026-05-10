@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>磁聚焦与发散 - 180° 上半周发射模型</title>
+    <title>磁聚焦 - 特定角度版 (30°, 60°, 90°, 120°, 150°)</title>
     <style>
         body { margin: 0; background: #000; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; font-family: 'Consolas', monospace; }
         canvas { background: #020202; box-shadow: 0 0 50px rgba(0, 242, 255, 0.2); border: 1px solid #1a1a1a; }
@@ -13,8 +13,8 @@
 </head>
 <body>
     <div class="ui-overlay">
-        <h1>Magnetic Lens: 180° Upper Hemisphere</h1>
-        <div class="info">发射角: 0° - 180° | 磁场: ⊙ | 粒子: 正电荷 | 2026 物理模拟</div>
+        <h1>Magnetic Lens: Fixed Angles</h1>
+        <div class="info">角度: 30°, 60°, 90°, 120°, 150° | 磁场: ⊙ | 2026 物理模拟</div>
     </div>
     <canvas id="physicsCanvas"></canvas>
 
@@ -25,31 +25,33 @@ const ctx = canvas.getContext('2d');
 canvas.width = 1100;
 canvas.height = 750;
 
-// 物理与几何配置
-const R = 150; // 磁场半径
-const centerX1 = 300, centerX2 = 800; // 左右中心
-const focalY = canvas.height / 2;    // 切点高度（连线）
+const R = 150; 
+const centerX1 = 300, centerX2 = 800; 
+const focalY = canvas.height / 2;    
 
-const centerY_Top = focalY - R;      // 上圆中心
-const centerY_Bottom = focalY + R;   // 下圆中心
+const centerY_Top = focalY - R;      
+const centerY_Bottom = focalY + R;   
 
-const numParticles = 80; // 粒子数量，增加密度使效果更明显
-const speed = 3.2;       // 运行速度
+// --- 已按要求修改 ---
+const angles = [30, 60, 90, 120, 150]; // 固定角度数组
+const numParticles = angles.length;
+const lineWidth = 3;    
+const speed = 3.2;       
+// --------------------
 
-// 磁场定义（磁场圆位置）
 const fields = [
-    { x: centerX1, y: centerY_Top,    label: "左上: 发散" },
-    { x: centerX2, y: centerY_Top,    label: "右上: 聚焦" },
-    { x: centerX2, y: centerY_Bottom, label: "右下: 发散" },
-    { x: centerX1, y: centerY_Bottom, label: "左下: 聚焦" }
+    { x: centerX1, y: centerY_Top },
+    { x: centerX2, y: centerY_Top },
+    { x: centerX2, y: centerY_Bottom },
+    { x: centerX1, y: centerY_Bottom }
 ];
 
 class Particle {
     constructor(id) {
         this.id = id;
-        // 使用鲜艳的色彩渐变
-        const hue = (id * 180 / numParticles) + 180; 
-        this.color = `hsla(${hue}, 90%, 60%, 0.8)`;
+        this.angleDeg = angles[id]; // 获取对应角度
+        const hue = (id * 360 / numParticles); 
+        this.color = `hsla(${hue}, 90%, 60%, 0.9)`;
         this.reset();
     }
 
@@ -57,51 +59,37 @@ class Particle {
         this.x = centerX1;
         this.y = focalY;
         
-        // 发射角度设定在 0° 到 180° 之间 (0 到 Math.PI 弧度)
-        // 0度代表水平向右，90度代表垂直向上，180度代表水平向左
-        // 在我们的坐标系中，向右是 X+，向上是 Y-
-        const angle = (this.id / (numParticles - 1)) * Math.PI;
+        // 使用指定的度数转换为弧度
+        const angleRad = (this.angleDeg * Math.PI) / 180;
         
-        this.vx = Math.cos(angle) * speed;
-        this.vy = -Math.sin(angle) * speed; // 向上运动故 Y 为负
-        
+        this.vx = Math.cos(angleRad) * speed;
+        this.vy = -Math.sin(angleRad) * speed; 
         this.path = [];
         this.frameCounter = 0;
     }
 
     update() {
-        let inField = false;
-        
-        // 磁场偏转判定
         for (let f of fields) {
             const dx = this.x - f.x;
             const dy = this.y - f.y;
             if (dx*dx + dy*dy <= R*R) {
-                // 磁场 ⊙，左手定则 -> 正电荷逆时针偏转
                 const omega = speed / R;
                 const vx_old = this.vx;
                 const vy_old = this.vy;
                 this.vx = vx_old * Math.cos(omega) - vy_old * Math.sin(omega);
                 this.vy = vx_old * Math.sin(omega) + vy_old * Math.cos(omega);
-                inField = true;
                 break;
             }
         }
-
         this.x += this.vx;
         this.y += this.vy;
         this.frameCounter++;
-
-        // 记录轨迹
         this.path.push({x: this.x, y: this.y});
         if (this.path.length > 600) this.path.shift();
-
-        // 边界保护重置
+        
         if (this.x < -50 || this.x > canvas.width + 50 || this.y < -50 || this.y > canvas.height + 50) {
             this.reset();
         }
-        
-        // 回到左侧切点重置 (设定检测延迟防止起始即重置)
         if (this.frameCounter > 200) {
             const d = Math.sqrt((this.x - centerX1)**2 + (this.y - focalY)**2);
             if (d < 4) this.reset();
@@ -110,22 +98,22 @@ class Particle {
 
     draw() {
         if (this.path.length < 2) return;
-        
         ctx.beginPath();
         ctx.strokeStyle = this.color;
-        ctx.lineWidth = 1;
+        ctx.lineWidth = lineWidth;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
         ctx.moveTo(this.path[0].x, this.path[0].y);
         for(let i=1; i<this.path.length; i++) {
             ctx.lineTo(this.path[i].x, this.path[i].y);
         }
         ctx.stroke();
 
-        // 绘制带发光效果的粒子头
         const head = this.path[this.path.length - 1];
         ctx.beginPath();
-        ctx.arc(head.x, head.y, 2, 0, Math.PI*2);
+        ctx.arc(head.x, head.y, 4, 0, Math.PI*2);
         ctx.fillStyle = "#fff";
-        ctx.shadowBlur = 8;
+        ctx.shadowBlur = 10;
         ctx.shadowColor = this.color;
         ctx.fill();
         ctx.shadowBlur = 0;
@@ -135,56 +123,40 @@ class Particle {
 const particles = Array.from({ length: numParticles }, (_, i) => new Particle(i));
 
 function drawScenery() {
-    // 绘制四个严格相切的圆
     fields.forEach(f => {
         ctx.beginPath();
         ctx.arc(f.x, f.y, R, 0, Math.PI * 2);
         ctx.strokeStyle = "rgba(0, 242, 255, 0.15)";
         ctx.stroke();
-        
-        // 磁场方向符号 ⊙
-        ctx.fillStyle = "rgba(0, 242, 255, 0.03)";
-        ctx.fill();
         ctx.fillStyle = "rgba(0, 242, 255, 0.4)";
         ctx.font = "14px Arial";
         ctx.fillText("⊙", f.x - 7, f.y + 6);
     });
-
-    // 绘制切线辅助（连线）
-    ctx.setLineDash([5, 10]);
     ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
     ctx.beginPath();
     ctx.moveTo(0, focalY);
     ctx.lineTo(canvas.width, focalY);
     ctx.stroke();
-    ctx.setLineDash([]);
-
-    // 焦点发光显示
     ctx.fillStyle = "#ff2d55";
     ctx.shadowBlur = 20;
     ctx.shadowColor = "#ff2d55";
     ctx.beginPath();
-    ctx.arc(centerX1, focalY, 4, 0, Math.PI*2);
-    ctx.arc(centerX2, focalY, 4, 0, Math.PI*2);
+    ctx.arc(centerX1, focalY, 5, 0, Math.PI*2);
+    ctx.arc(centerX2, focalY, 5, 0, Math.PI*2);
     ctx.fill();
     ctx.shadowBlur = 0;
 }
 
 function loop() {
-    // 黑色背景加轻微拖尾
     ctx.fillStyle = "rgba(0, 0, 0, 0.15)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     drawScenery();
-
     particles.forEach(p => {
         p.update();
         p.draw();
     });
-
     requestAnimationFrame(loop);
 }
-
 loop();
 </script>
 </body>
